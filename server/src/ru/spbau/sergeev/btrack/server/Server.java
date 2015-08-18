@@ -41,4 +41,9 @@ public class Server extends Actor {
                 log.log(Level.INFO, "Wrong message type");
         }
     }
+
+    @Override
+    public void onConnect(SocketChannel socketChannel) {
+
+    }
 }

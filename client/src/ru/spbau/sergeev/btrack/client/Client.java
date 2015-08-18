@@ -2,6 +2,7 @@ package ru.spbau.sergeev.btrack.client;
 
 import ru.spbau.sergeev.btrack.common.Actor;
 import ru.spbau.sergeev.btrack.common.messages.Message;
+import ru.spbau.sergeev.btrack.common.messages.SettingsRequest;
 import ru.spbau.sergeev.btrack.common.messages.SettingsResponse;
 
 import java.io.IOException;
@@ -34,6 +35,15 @@ public class Client extends Actor {
                 break;
             default:
                 log.log(Level.INFO, "Wrong message type");
+        }
+    }
+
+    @Override
+    public void onConnect(SocketChannel socketChannel) {
+        try {
+            request(socketChannel, new SettingsRequest());
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 }

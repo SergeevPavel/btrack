@@ -56,6 +56,8 @@ public abstract class Actor implements Runnable {
 
     public abstract void processMessage(Message msg, SocketChannel socketChannel);
 
+    public abstract void onConnect(SocketChannel socketChannel);
+
     private void accept(SelectionKey key) throws IOException {
         log.log(Level.INFO, "Incoming connection");
         SocketChannel socketChanel = serverChannel.accept();
@@ -113,7 +115,8 @@ public abstract class Actor implements Runnable {
             return;
         }
 
-        key.interestOps(SelectionKey.OP_WRITE); // TODO test it
+        //key.interestOps(SelectionKey.OP_WRITE); // TODO test it
+        executor.submit(() -> onConnect(socketChannel));
         log.log(Level.INFO, "Connecting finishing successfully");
     }
 
@@ -156,7 +159,7 @@ public abstract class Actor implements Runnable {
      * @param targetISA
      * @throws IOException
      */
-    public SocketChannel initiateConnection(InetSocketAddress targetISA) throws IOException {
+    public void initiateConnection(InetSocketAddress targetISA) throws IOException {
         log.log(Level.INFO, String.format("Try to initiate connection to %s", targetISA));
         SocketChannel socketChannel = SocketChannel.open();
         socketChannel.configureBlocking(false);
@@ -166,8 +169,7 @@ public abstract class Actor implements Runnable {
         synchronized (pendingChanges) {
             pendingChanges.add(new ChangeRequest(socketChannel, ChangeRequest.REGISTER, SelectionKey.OP_CONNECT));
         }
-        // no wakeup main thread, before data for writing added
-        return socketChannel;
+        selector.wakeup();
     }
 
     /**
@@ -205,9 +207,9 @@ public abstract class Actor implements Runnable {
     public void request(SocketChannel socket, Message msg) throws IOException {
         log.log(Level.INFO, "Request add to queue");
         addMessageToQueue(socket, msg);
-//        synchronized (pendingChanges) {
-//            pendingChanges.add(new ChangeRequest(socket, ChangeRequest.CHANGEOPS, SelectionKey.OP_WRITE));
-//        }
+        synchronized (pendingChanges) {
+            pendingChanges.add(new ChangeRequest(socket, ChangeRequest.CHANGEOPS, SelectionKey.OP_WRITE));
+        }
         selector.wakeup();
     }
 
