@@ -8,6 +8,8 @@ import ru.spbau.sergeev.btrack.common.messages.SettingsResponse;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SocketChannel;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -16,14 +18,19 @@ import java.util.logging.Logger;
  */
 public class Server extends Actor {
     private static Logger log = Logger.getLogger(Server.class.getName());
+    private static Map<SocketChannel, ClientState> activeClients = new HashMap<>();
 
     public Server(InetSocketAddress isa) throws IOException {
         super(isa);
     }
 
+    @Override
+    public void onStart() {
+    }
+
     void onSettingsRequest(SettingsRequest msg, SocketChannel socketChannel) {
         try {
-            response(socketChannel, new SettingsResponse(42));
+            sendMessage(socketChannel, new SettingsResponse(ServerConfig.CHAPTERS_COUNT));
         } catch (IOException e) {
             log.log(Level.SEVERE, "Error on Settings response", e);
         }
@@ -44,6 +51,11 @@ public class Server extends Actor {
 
     @Override
     public void onConnect(SocketChannel socketChannel) {
+
+    }
+
+    @Override
+    public void onDisconnect(SocketChannel socketChannel) {
 
     }
 }

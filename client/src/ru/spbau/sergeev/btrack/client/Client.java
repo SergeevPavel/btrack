@@ -21,8 +21,19 @@ public class Client extends Actor {
         super(isa);
     }
 
+    @Override
+    public void onStart() {
+        try {
+            initiateConnection(new InetSocketAddress("localhost", 20001));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     void onSettingsResponse(SettingsResponse msg, SocketChannel socketChannel) {
         System.out.println(msg.N);
+        closeConnection(socketChannel);
+        shutDown();
     }
 
     @Override
@@ -41,9 +52,14 @@ public class Client extends Actor {
     @Override
     public void onConnect(SocketChannel socketChannel) {
         try {
-            request(socketChannel, new SettingsRequest());
+            sendMessage(socketChannel, new SettingsRequest());
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    @Override
+    public void onDisconnect(SocketChannel socketChannel) {
+
     }
 }

@@ -15,7 +15,6 @@ public class Main {
             log.log(Level.INFO, "Client started");
             final Client client = new Client(new InetSocketAddress("localhost", 20002));
             new Thread(client).start();
-            client.initiateConnection(new InetSocketAddress("localhost", 20001));
         } catch (IOException e) {
             e.printStackTrace();
         }

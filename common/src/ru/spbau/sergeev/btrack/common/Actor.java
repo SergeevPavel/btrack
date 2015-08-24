@@ -13,7 +13,6 @@ import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Queue;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -28,18 +27,21 @@ public abstract class Actor implements Runnable {
     private final ServerSocketChannel serverChannel;
     private final Selector selector;
     private final List<ChangeRequest> pendingChanges = new LinkedList<>();
-    private final ConcurrentMap<SocketChannel, Queue<ByteBuffer>> pendingData = new ConcurrentHashMap<>();
+    private final ConcurrentMap<SocketChannel, ConcurrentLinkedQueue<ByteBuffer>> pendingData = new ConcurrentHashMap<>();
+    private boolean isRunning = true;
 
     private static class ChangeRequest {
-        public static final int REGISTER = 1;
-        public static final int CLOSE = 2;
-        public static final int CHANGEOPS = 3;
+        public enum Type {
+            REGISTER,
+            CLOSE,
+            CHANGEOPS
+        }
 
         public final SocketChannel socket;
-        public final int type;
+        public final Type type;
         public final int ops;
 
-        public ChangeRequest(SocketChannel socket, int type, int ops) {
+        public ChangeRequest(SocketChannel socket, Type type, int ops) {
             this.socket = socket;
             this.type = type;
             this.ops = ops;
@@ -54,9 +56,92 @@ public abstract class Actor implements Runnable {
         serverChannel.register(selector, SelectionKey.OP_ACCEPT);
     }
 
+    /**
+     * Calls when Actor started
+     * Calls in non selector thread
+     *
+     */
+    public abstract void onStart();
+
+    /**
+     * Calls on new incoming message
+     * Calls in non selector thread
+     *
+     * @param msg
+     * @param socketChannel
+     */
     public abstract void processMessage(Message msg, SocketChannel socketChannel);
 
+    /**
+     * Calls on new connection
+     * Calls in non selector thread
+     *
+     * @param socketChannel
+     */
     public abstract void onConnect(SocketChannel socketChannel);
+
+
+    /**
+     * Calls on disconnecting
+     * Calls in non selector thread
+     *
+     * @param socketChannel
+     */
+    public abstract void onDisconnect(SocketChannel socketChannel);
+
+    /**
+     * Initiate new connection.
+     * Can be called in non selector thread.
+     *
+     * @param targetISA
+     * @throws IOException
+     */
+    public void initiateConnection(InetSocketAddress targetISA) throws IOException {
+        log.log(Level.INFO, String.format("Try to initiate connection to %s", targetISA));
+        SocketChannel socketChannel = SocketChannel.open();
+        socketChannel.configureBlocking(false);
+
+        socketChannel.connect(targetISA);
+
+        synchronized (pendingChanges) {
+            pendingChanges.add(new ChangeRequest(socketChannel, ChangeRequest.Type.REGISTER, SelectionKey.OP_CONNECT));
+        }
+        selector.wakeup();
+    }
+
+    /**
+     * Close connection.
+     * Can be called in non selector thread.
+     */
+    public void closeConnection(SocketChannel socket) {
+        synchronized (pendingChanges) {
+            pendingChanges.add(new ChangeRequest(socket, ChangeRequest.Type.CLOSE, 0));
+        }
+        selector.wakeup();
+    }
+
+    /**
+     * Send message
+     * Can be called in non selector thread.
+     *
+     * @param socket
+     * @param msg
+     */
+    public void sendMessage(SocketChannel socket, Message msg) throws IOException {
+        log.log(Level.INFO, "Request add to queue");
+        addMessageToQueue(socket, msg);
+        synchronized (pendingChanges) {
+            pendingChanges.add(new ChangeRequest(socket, ChangeRequest.Type.CHANGEOPS, SelectionKey.OP_WRITE));
+        }
+        selector.wakeup();
+    }
+
+    public void shutDown() {
+        log.log(Level.INFO, "Shutdown actor");
+        isRunning = false;
+        selector.wakeup();
+        executor.shutdown();
+    }
 
     private void accept(SelectionKey key) throws IOException {
         log.log(Level.INFO, "Incoming connection");
@@ -78,20 +163,22 @@ public abstract class Actor implements Runnable {
             } catch (IOException ne) {
                 log.log(Level.SEVERE, "Error when closing chanel", ne);
             }
-            log.log(Level.SEVERE, "Error when read data", e);
+            executor.submit(() -> onDisconnect((SocketChannel)key.channel()));
+            log.log(Level.SEVERE, "Data not red");
             return;
         }
 
         log.log(Level.INFO, "Message received");
-        processMessage(msg, socketChanel); // TODO run in executor
+        executor.submit(() -> processMessage(msg, socketChanel));
     }
 
     private void write(SelectionKey key) throws IOException {
         log.log(Level.INFO, "Data writing");
         final SocketChannel socketChanel = (SocketChannel)key.channel();
-        Queue<ByteBuffer> queue = pendingData.get(socketChanel);
-        while (!queue.isEmpty()) {
-            final ByteBuffer buf = queue.remove();
+        ConcurrentLinkedQueue<ByteBuffer> queue = pendingData.get(socketChanel);
+        while (true) {
+            final ByteBuffer buf = queue.poll();
+            if (buf == null) break;
             while (buf.remaining() > 0) {
                 log.log(Level.INFO, String.format("Write remaining: %d", buf.remaining()));
                 socketChanel.write(buf);
@@ -115,7 +202,6 @@ public abstract class Actor implements Runnable {
             return;
         }
 
-        //key.interestOps(SelectionKey.OP_WRITE); // TODO test it
         executor.submit(() -> onConnect(socketChannel));
         log.log(Level.INFO, "Connecting finishing successfully");
     }
@@ -141,7 +227,6 @@ public abstract class Actor implements Runnable {
         final int messageSize = readMessageSize(socketChannel);
         log.log(Level.INFO, String.format("Message size: %d", messageSize));
         if (messageSize <= 0) {
-            log.log(Level.SEVERE, "Wrong message size");
             throw new RuntimeException("Wrong message size");
         }
         final ByteBuffer messageBuffer = ByteBuffer.allocate(messageSize);
@@ -152,95 +237,38 @@ public abstract class Actor implements Runnable {
         return Serializer.deserialize(messageBuffer.array());
     }
 
-    /**
-     * Initiate new connection.
-     * Can be called in non selector thread.
-     *
-     * @param targetISA
-     * @throws IOException
-     */
-    public void initiateConnection(InetSocketAddress targetISA) throws IOException {
-        log.log(Level.INFO, String.format("Try to initiate connection to %s", targetISA));
-        SocketChannel socketChannel = SocketChannel.open();
-        socketChannel.configureBlocking(false);
-
-        socketChannel.connect(targetISA);
-
-        synchronized (pendingChanges) {
-            pendingChanges.add(new ChangeRequest(socketChannel, ChangeRequest.REGISTER, SelectionKey.OP_CONNECT));
-        }
-        selector.wakeup();
-    }
-
-    /**
-     * Close connection.
-     * Can be called in non selector thread.
-     */
-    public void closeConnection(SocketChannel socket) {
-        synchronized (pendingChanges) {
-            pendingChanges.add(new ChangeRequest(socket, ChangeRequest.CLOSE, 0));
-        }
-        selector.wakeup();
-    }
-
     private void addMessageToQueue(SocketChannel socket, Message msg) throws IOException {
-        Queue<ByteBuffer> queue = pendingData.get(socket);
-        if (queue == null) {
-            queue = new ConcurrentLinkedQueue<>();
-            pendingData.put(socket, queue);
-        }
+        pendingData.putIfAbsent(socket, new ConcurrentLinkedQueue<>());
+        ConcurrentLinkedQueue<ByteBuffer> queue = pendingData.get(socket);
         byte[] buffer = Serializer.serialize(msg);
         ByteBuffer sizeBuf = ByteBuffer.allocate(4);
         sizeBuf.putInt(buffer.length);
         sizeBuf.flip();
-        queue.add(sizeBuf);
-        queue.add(ByteBuffer.wrap(buffer));
+        queue.offer(sizeBuf);
+        queue.offer(ByteBuffer.wrap(buffer));
         log.log(Level.INFO, String.format("Message added to queue: %d", buffer.length));
-    }
-
-    /**
-     * Send data
-     * Can be called in non selector thread.
-     *
-     * @param socket
-     */
-    public void request(SocketChannel socket, Message msg) throws IOException {
-        log.log(Level.INFO, "Request add to queue");
-        addMessageToQueue(socket, msg);
-        synchronized (pendingChanges) {
-            pendingChanges.add(new ChangeRequest(socket, ChangeRequest.CHANGEOPS, SelectionKey.OP_WRITE));
-        }
-        selector.wakeup();
-    }
-
-    public void response(SocketChannel socket, Message msg) throws IOException {
-        log.log(Level.INFO, "Response add to queue");
-        addMessageToQueue(socket, msg);
-        synchronized (pendingChanges) {
-            pendingChanges.add(new ChangeRequest(socket, ChangeRequest.CHANGEOPS, SelectionKey.OP_WRITE));
-        }
-        selector.wakeup();
     }
 
     @Override
     public void run() {
         log.log(Level.INFO, "Actor started");
+        executor.submit(() -> onStart());
 
-        while (true) {
+        while (isRunning) {
             try {
                 synchronized (pendingChanges) {
                     for (final ChangeRequest change : pendingChanges) {
                         switch (change.type) {
-                            case ChangeRequest.REGISTER:
+                            case REGISTER:
                                 change.socket.register(selector, change.ops);
                                 log.log(Level.INFO, "Register priority");
                                 break;
-                            case ChangeRequest.CLOSE:
+                            case CLOSE:
                                 change.socket.close();
                                 change.socket.keyFor(selector).channel();
                                 log.log(Level.INFO, "Close priority");
                                 break;
-                            case ChangeRequest.CHANGEOPS:
+                            case CHANGEOPS:
                                 SelectionKey key = change.socket.keyFor(selector);
                                 key.interestOps(change.ops);
                                 log.log(Level.INFO, String.format("Ops changed to %d", change.ops));
@@ -272,5 +300,6 @@ public abstract class Actor implements Runnable {
                 log.log(Level.SEVERE, "Error in selector loop", e);
             }
         }
+        log.log(Level.INFO, "Selector loop terminated");
     }
 }
