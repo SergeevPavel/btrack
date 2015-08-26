@@ -16,9 +16,11 @@ import java.util.logging.Logger;
  */
 public class Client extends Actor {
     private static Logger log = Logger.getLogger(Client.class.getName());
+    private final InetSocketAddress isa;
 
     public Client(InetSocketAddress isa) throws IOException {
         super(isa);
+        this.isa = isa;
     }
 
     @Override
@@ -39,20 +41,25 @@ public class Client extends Actor {
     @Override
     public void processMessage(Message msg, SocketChannel socketChannel) {
         log.log(Level.INFO, "Client message processor");
-        switch (msg.getType()) {
-            case SETTINGS_RESPONSE:
-                log.log(Level.INFO, "Got SETTINGS_RESPONSE");
-                onSettingsResponse((SettingsResponse) msg, socketChannel);
-                break;
-            default:
-                log.log(Level.INFO, "Wrong message type");
+        try {
+            switch (msg.getType()) {
+                case SETTINGS_RESPONSE:
+                    log.log(Level.INFO, "Got SETTINGS_RESPONSE");
+                    onSettingsResponse((SettingsResponse) msg, socketChannel);
+                    break;
+                default:
+                    log.log(Level.INFO, "Wrong message type");
+            }
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "Error with message processing:", e);
+            shutDown();
         }
     }
 
     @Override
-    public void onConnect(SocketChannel socketChannel) {
+    public void onConnectingFinished(SocketChannel socketChannel) {
         try {
-            sendMessage(socketChannel, new SettingsRequest());
+            sendMessage(socketChannel, new SettingsRequest(isa));
         } catch (IOException e) {
             e.printStackTrace();
         }

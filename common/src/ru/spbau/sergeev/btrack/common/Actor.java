@@ -73,12 +73,12 @@ public abstract class Actor implements Runnable {
     public abstract void processMessage(Message msg, SocketChannel socketChannel);
 
     /**
-     * Calls on new connection
+     * Calls on connecting finished
      * Calls in non selector thread
      *
      * @param socketChannel
      */
-    public abstract void onConnect(SocketChannel socketChannel);
+    public abstract void onConnectingFinished(SocketChannel socketChannel);
 
 
     /**
@@ -202,7 +202,7 @@ public abstract class Actor implements Runnable {
             return;
         }
 
-        executor.submit(() -> onConnect(socketChannel));
+        executor.submit(() -> onConnectingFinished(socketChannel));
         log.log(Level.INFO, "Connecting finishing successfully");
     }
 
