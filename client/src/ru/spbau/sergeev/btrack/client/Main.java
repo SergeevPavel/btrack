@@ -1,6 +1,5 @@
 package ru.spbau.sergeev.btrack.client;
 
-import ui.LoginWindow;
 import ui.MainWindow;
 
 import java.io.IOException;
@@ -25,8 +24,9 @@ public class Main {
     }
 
     public static void showUI() {
-        LoginWindow loginWindow = new LoginWindow();
-        final InetSocketAddress isa = loginWindow.getIsa();
+        //LoginWindow loginWindow = new LoginWindow(); TODO uncomment this line
+        //final InetSocketAddress isa = loginWindow.getIsa();
+        InetSocketAddress isa = new InetSocketAddress("localhost", 20001);
         if (isa != null) {
             MainWindow mainWindow = new MainWindow();
         }
@@ -34,6 +34,7 @@ public class Main {
 
     public static void main(String[] args) {
 //        javax.swing.SwingUtilities.invokeLater(Main::showUI);
-        showUI();
+//        showUI();
+        runBackend(args);
     }
 }

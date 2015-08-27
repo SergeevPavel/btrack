@@ -1,7 +1,8 @@
 package ui;
 
 import javax.swing.*;
-import javax.swing.table.TableColumn;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.logging.Level;
@@ -23,6 +24,7 @@ public class MainWindow extends JFrame {
         super("btrack");
         log.log(Level.INFO, "Create main window");
         setContentPane(panel);
+        initUI();
         addFileButton.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -44,15 +46,26 @@ public class MainWindow extends JFrame {
                 onQuit();
             }
         });
-        initUI();
+        filesTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
+            @Override
+            public void valueChanged(ListSelectionEvent event) {
+                if (!event.getValueIsAdjusting()) {
+                    onSelectedRowChanged();
+                }
+            }
+        });
+//        setSize(600, 500);
         pack();
+        setResizable(false);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setVisible(true);
+        filesTable.addMouseListener(new MouseAdapter() {
+        });
     }
 
     private void initUI() {
-        filesTable.addColumn(new TableColumn());
-        filesTable.addColumn(new TableColumn());
+        filesTable.setModel(new FilesTableModel());
+        filesTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     }
 
     private void onAddFile() {
@@ -61,10 +74,16 @@ public class MainWindow extends JFrame {
 
     private void onStopSeeding() {
         log.log(Level.INFO, "Stop seeding");
+        final int rowIndex = filesTable.getSelectedRow();
+        log.log(Level.INFO, String.format("Selected row: %d", rowIndex));
     }
 
     private void onQuit() {
         log.log(Level.INFO, "Quit");
         dispose();
+    }
+
+    private void onSelectedRowChanged() {
+        log.log(Level.INFO, "Selected: " + filesTable.getValueAt(filesTable.getSelectedRow(), 0).toString());
     }
 }

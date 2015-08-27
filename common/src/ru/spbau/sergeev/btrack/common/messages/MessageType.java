@@ -5,5 +5,6 @@ package ru.spbau.sergeev.btrack.common.messages;
  */
 public enum MessageType {
     SETTINGS_REQUEST,
-    SETTINGS_RESPONSE
+    SETTINGS_RESPONSE,
+    ADD_BOOK
 }
