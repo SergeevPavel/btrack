@@ -5,7 +5,6 @@ import ru.spbau.sergeev.btrack.client.Client;
 import javax.swing.*;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
-import java.awt.*;
 import java.awt.event.*;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -108,6 +107,10 @@ public class MainWindow extends JFrame {
 
     private void initUI() {
         filesTable.setModel(new FilesTableModel());
+        final FilesTableRender render = new FilesTableRender();
+        for (int i = 0; i < 3; i++) {
+            filesTable.getColumnModel().getColumn(i).setCellRenderer(render);
+        }
         filesTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     }
 
@@ -126,8 +129,8 @@ public class MainWindow extends JFrame {
     private void onStopSeeding() {
         log.log(Level.INFO, "Stop seeding");
         final int rowIndex = filesTable.getSelectedRow();
-        progressBar.setBackground(Color.green);
-        log.log(Level.INFO, String.format("Selected row: %d", rowIndex));
+        Client.client.stopSeeding(rowIndex);
+        log.log(Level.INFO, String.format("Stop seeding row: %d", rowIndex));
     }
 
     private void onQuit() {

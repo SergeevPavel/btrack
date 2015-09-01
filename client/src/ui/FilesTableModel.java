@@ -3,6 +3,7 @@ package ui;
 import ru.spbau.sergeev.btrack.client.Client;
 
 import javax.swing.table.AbstractTableModel;
+import java.awt.*;
 
 /**
  * @author pavel
@@ -47,5 +48,21 @@ public class FilesTableModel extends AbstractTableModel {
     @Override
     public String getColumnName(int column) {
         return columnNames[column];
+    }
+
+    public Color getRowColor(int row, boolean isSelected) {
+        if (Client.client.bookStorage.get(row).isSeeding()) {
+            if (isSelected) {
+                return Color.gray;
+            } else {
+                return Color.white;
+            }
+        } else {
+            if (isSelected) {
+                return Color.pink;
+            } else {
+                return Color.red;
+            }
+        }
     }
 }

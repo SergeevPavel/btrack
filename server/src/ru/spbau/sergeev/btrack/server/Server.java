@@ -18,10 +18,11 @@ public class Server extends Actor {
     private static Logger log = Logger.getLogger(Server.class.getName());
     public static int CHAPTERS_COUNT = 1000;
     private static ConcurrentMap<SocketChannel, ClientState> activeClients = new ConcurrentHashMap<>();
-    private Index index = new Index();
+    private final Index index = new Index();
 
     public Server(InetSocketAddress isa) throws IOException {
         super(isa);
+        log.setLevel(Level.SEVERE);
     }
 
     @Override
@@ -45,6 +46,11 @@ public class Server extends Actor {
         index.addOwner(msg.bookName, msg.size, activeClients.get(socketChannel).isa);
     }
 
+    void onAddChapter(AddChapter msg, SocketChannel socketChannel) {
+        log.log(Level.INFO, String.format("Add chapter: %s %d", msg.bookName, msg.chapterNum));
+        index.addChapterOwner(msg.bookName, msg.chapterNum, activeClients.get(socketChannel).isa);
+    }
+
     void onStatisticRequest(StatisticRequest msg, SocketChannel socketChannel) {
         try {
             sendMessage(socketChannel, index.generateStatistic());
@@ -66,6 +72,10 @@ public class Server extends Actor {
                     log.log(Level.INFO, "Got ADD_BOOK");
                     onAddBook((AddBook) msg, socketChannel);
                     break;
+                case ADD_CHAPTER:
+                    log.log(Level.INFO, "Got ADD_CHAPTER");
+                    onAddChapter((AddChapter) msg, socketChannel);
+                    break;
                 case STATISTIC_REQUEST:
                     log.log(Level.INFO, "Got STATISTIC_REQUEST");
                     onStatisticRequest((StatisticRequest) msg, socketChannel);
@@ -73,6 +83,10 @@ public class Server extends Actor {
                 case CHAPTER_OWNER_REQUEST:
                     log.log(Level.INFO, "Got CHAPTER_OWNER_REQUEST");
                     onChapterOwnerRequest((ChapterOwnerRequest) msg, socketChannel);
+                    break;
+                case STOP_SEEDING:
+                    log.log(Level.INFO, "Got STOP_SEEDING");
+                    onStopSeeding((StopSeeding) msg, socketChannel);
                     break;
                 default:
                     log.log(Level.INFO, "Wrong message type: " + msg.getType().toString());
@@ -89,6 +103,11 @@ public class Server extends Actor {
         } catch (Exception e) {
             log.log(Level.SEVERE, "Error on generating chapter owner response", e);
         }
+    }
+
+    public void onStopSeeding(StopSeeding msg, SocketChannel socketChannel) {
+        final InetSocketAddress owner = activeClients.get(socketChannel).isa;
+        index.stopSeeding(msg.bookName, owner);
     }
 
     @Override

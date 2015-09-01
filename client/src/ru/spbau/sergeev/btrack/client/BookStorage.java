@@ -66,7 +66,8 @@ public class BookStorage implements Closeable {
     }
 
     synchronized public ChapterOwnerRequest generateChapterRequest() {
-        final List<Book> notCompetedBooks = books.stream().filter(b -> !b.isBookCompleted()).collect(Collectors.toList());
+        final List<Book> notCompetedBooks = books.stream().filter(b -> !b.isBookCompleted() && b.isAvailableNew())
+                                                          .collect(Collectors.toList());
         if (!notCompetedBooks.isEmpty()) {
             int index = rnd.nextInt(notCompetedBooks.size());
             final Book book = notCompetedBooks.get(index);
@@ -89,6 +90,18 @@ public class BookStorage implements Closeable {
         }
         assert false;
         return null;
+    }
+
+    public void chapterRequestRejected(ChapterRequest msg) {
+        for (Book book: books) {
+            if (book.getBookName().equals(msg.bookName)) {
+                book.chapterRequestRejected(msg.chapterNum);
+            }
+        }
+    }
+
+    public void stopSeeding(int bookNum) {
+        books.get(bookNum).stopSeeding();
     }
 
     @Override

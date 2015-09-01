@@ -8,8 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.EnumSet;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -22,14 +21,16 @@ import static java.nio.file.StandardOpenOption.WRITE;
  */
 public class Book implements Closeable {
     private static Logger log = Logger.getLogger(Client.class.getName());
-    private Path path;
+    private final Path path;
     private boolean[] isChapterPresent = new boolean[Client.chaptersCount];
     private boolean[] isChapterAvailable = new boolean[Client.chaptersCount];
     private boolean[] isChapterRequested = new boolean[Client.chaptersCount];
     private int presentedChaptersCount;
     private int availableChaptersCount;
-    private SeekableByteChannel file;
+    private final SeekableByteChannel file;
     private long fileSize;
+    private boolean isSeeding;
+    private Random rnd = new Random();
 
     final boolean[] getIsChapterPresent() {
         return isChapterPresent;
@@ -66,6 +67,7 @@ public class Book implements Closeable {
         }
         file = Files.newByteChannel(path, EnumSet.of(READ, WRITE));
         fileSize = size;
+        isSeeding = true;
     }
 
     private Book(Path path) throws IOException {
@@ -76,6 +78,7 @@ public class Book implements Closeable {
         Arrays.fill(isChapterRequested, false);
         file = Files.newByteChannel(path, EnumSet.of(READ, WRITE));
         fileSize = file.size();
+        isSeeding = true;
     }
 
     synchronized public byte[] readChapter(int num) throws IOException {
@@ -131,14 +134,36 @@ public class Book implements Closeable {
         return presentedChaptersCount == Client.chaptersCount;
     }
 
+    public boolean isAvailableNew() {
+        return presentedChaptersCount < availableChaptersCount;
+    }
+
     public int requestedChapter() {
+        List<Integer> chapters = new ArrayList<>();
         for (int i = 0; i < Client.chaptersCount; i++) {
             if (!isChapterPresent[i] && isChapterAvailable[i] && !isChapterRequested[i]) {
-                isChapterRequested[i] = true;
-                return i;
+                chapters.add(i);
             }
         }
-        return -1;
+        if (chapters.isEmpty()) {
+            return -1;
+        } else {
+            int num = rnd.nextInt(chapters.size());
+            isChapterRequested[chapters.get(num)] = true;
+            return chapters.get(num);
+        }
+    }
+
+    public void chapterRequestRejected(int num) {
+        isChapterRequested[num] = false;
+    }
+
+    public boolean isSeeding() {
+        return isSeeding;
+    }
+
+    public void stopSeeding() {
+        isSeeding = false;
     }
 
     @Override

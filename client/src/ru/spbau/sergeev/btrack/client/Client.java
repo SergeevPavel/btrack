@@ -101,21 +101,25 @@ public class Client extends Actor {
 
     void onChapterOwnerResponse(ChapterOwnerResponse msg, SocketChannel socketChannel) {
         try {
+            if (msg.owner == null) {
+                bookStorage.chapterRequestRejected(new ChapterRequest(msg.bookName, msg.chapterNum));
+                waitingChaptersCounter.release();
+                return;
+            }
             final SocketChannel ownerChanel = initiateConnection(msg.owner);
             synchronized (pendingChaptersRequests) {
                 pendingChaptersRequests.put(ownerChanel, new ChapterRequest(msg.bookName, msg.chapterNum));
                 pendingChaptersRequests.notify();
             }
-            // TODO error when connecting not finished
-            // TODO treat owner not found response
         } catch (Exception e) {
-            log.log(Level.SEVERE, "Error on initiation connection to peer: " +  msg.owner.toString(), e);
+            log.log(Level.SEVERE, "Error on initiation connection to peer: " + msg.owner.toString(), e);
         }
     }
 
     void onChapterRequest(ChapterRequest msg, SocketChannel socketChannel) {
         try {
             sendMessage(socketChannel, bookStorage.generateChapterResponse(msg));
+//            log.log(Level.SEVERE, String.format("Chapter request: %s %d", msg.bookName, msg.chapterNum));
         } catch (Exception e) {
             log.log(Level.SEVERE, "Error on generating chapter response", e);
         }
@@ -125,8 +129,9 @@ public class Client extends Actor {
         try {
             bookStorage.addChapter(msg);
             closeConnection(socketChannel);
-            sendMessage(serverChanel, new AddChapter(msg.bookName, msg.chapterNumber));
+            pendingChaptersRequests.remove(socketChannel);
             waitingChaptersCounter.release();
+            sendMessage(serverChanel, new AddChapter(msg.bookName, msg.chapterNumber));
         } catch (Exception e) {
             log.log(Level.SEVERE, "Error on adding chapter to book storage", e);
         }
@@ -162,12 +167,30 @@ public class Client extends Actor {
         }
     }
 
+    private void treatFailedChapterRequest(SocketChannel socketChannel) {
+        final ChapterRequest request = pendingChaptersRequests.get(socketChannel);
+        if (request != null) {
+            bookStorage.chapterRequestRejected(request);
+            pendingChaptersRequests.remove(socketChannel);
+            waitingChaptersCounter.release();
+        }
+    }
+
     @Override
     public void onDisconnect(SocketChannel socketChannel) {
         try {
-            log.log(Level.INFO, "Disconnected");
+            treatFailedChapterRequest(socketChannel);
         } catch (Exception e) {
             log.log(Level.SEVERE, "Exception on disconnect callback", e);
+        }
+    }
+
+    @Override
+    public void onConnectingError(SocketChannel socketChannel) {
+        try {
+            treatFailedChapterRequest(socketChannel);
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "Error on treating connection error", e);
         }
     }
 
@@ -183,21 +206,20 @@ public class Client extends Actor {
         }
     }
 
-    @Override
-    public void onConnectingError(SocketChannel socketChannel) {
-        try {
-            if (waitingChaptersCounter.availablePermits() < PARALLEL_CHAPTERS_REQUEST) {
-                waitingChaptersCounter.release();
-            }
-        } catch (Exception e) {
-            log.log(Level.SEVERE, "Error on treating connection error", e);
-        }
-    }
-
     public void addFile(Path filePath) throws IOException {
         Book book = Book.addExistingBook(filePath);
         bookStorage.addBook(book);
         sendMessage(serverChanel, book.generateAddBookMessage());
+    }
+
+    public void stopSeeding(int bookNum) {
+        try {
+            bookStorage.stopSeeding(bookNum);
+            final String bookName = bookStorage.get(bookNum).getBookName();
+            sendMessage(serverChanel, new StopSeeding(bookName));
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "Error on stop seeding", e);
+        }
     }
 
     private void updateStatistic() {

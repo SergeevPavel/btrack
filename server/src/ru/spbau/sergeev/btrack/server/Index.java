@@ -52,11 +52,21 @@ public class Index {
         }
     }
 
+    public void addChapterOwner(String filename, int num, InetSocketAddress isa) {
+        final BookIndex bindex = index.get(filename);
+        if (bindex != null) {
+            bindex.chapters.get(num).owners.add(isa);
+        }
+    }
+
     public ChapterOwnerResponse generateChapterOwnerResponse(ChapterOwnerRequest request) {
         final BookIndex bindex = index.get(request.bookName);
         final Set<InetSocketAddress> owners = bindex.chapters.get(request.chapterNumber).owners;
         final Set<InetSocketAddress> activeOwners = new HashSet<>(owners);
         activeOwners.retainAll(activePeers);
+        if (activeOwners.isEmpty()) {
+            return new ChapterOwnerResponse(null, request.bookName, request.chapterNumber);
+        }
         int item = rnd.nextInt(activeOwners.size());
         int i = 0;
         InetSocketAddress owner = null;
@@ -68,7 +78,6 @@ public class Index {
             }
             i = i + 1;
         }
-        assert owner != null; // TODO chapter is not available
         return new ChapterOwnerResponse(owner, request.bookName, request.chapterNumber);
     }
 
@@ -89,5 +98,11 @@ public class Index {
             i++;
         }
         return response;
+    }
+
+    public void stopSeeding(String bookName, InetSocketAddress owner) {
+        for (ChapterIndex chapter: index.get(bookName).chapters) {
+            chapter.owners.remove(owner);
+        }
     }
 }
