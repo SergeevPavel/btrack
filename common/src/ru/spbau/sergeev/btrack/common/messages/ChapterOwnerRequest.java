@@ -3,19 +3,17 @@ package ru.spbau.sergeev.btrack.common.messages;
 /**
  * @author pavel
  */
-public class ChapterResponse implements Message {
+public class ChapterOwnerRequest implements Message {
     public String bookName;
     public int chapterNumber;
-    public byte[] chapter;
 
-    public ChapterResponse(String bookName, int chapterNumber, byte[] chapter) {
+    public ChapterOwnerRequest(String bookName, int chapterNumber) {
         this.bookName = bookName;
         this.chapterNumber = chapterNumber;
-        this.chapter = chapter;
     }
 
     @Override
     public MessageType getType() {
-        return MessageType.CHAPTER_RESPONSE;
+        return MessageType.CHAPTER_OWNER_REQUEST;
     }
 }

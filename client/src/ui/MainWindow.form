@@ -57,6 +57,11 @@
           </component>
         </children>
       </scrollpane>
+      <component id="7c10e" class="ui.ProgressBar" binding="progressBar">
+        <constraints>
+          <grid row="3" column="1" row-span="1" col-span="1" vsize-policy="4" hsize-policy="4" anchor="0" fill="3" indent="0" use-parent-layout="false"/>
+        </constraints>
+      </component>
     </children>
   </grid>
 </form>

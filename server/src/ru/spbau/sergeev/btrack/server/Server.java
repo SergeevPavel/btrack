@@ -1,9 +1,7 @@
 package ru.spbau.sergeev.btrack.server;
 
 import ru.spbau.sergeev.btrack.common.Actor;
-import ru.spbau.sergeev.btrack.common.messages.Message;
-import ru.spbau.sergeev.btrack.common.messages.SettingsRequest;
-import ru.spbau.sergeev.btrack.common.messages.SettingsResponse;
+import ru.spbau.sergeev.btrack.common.messages.*;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -18,7 +16,9 @@ import java.util.logging.Logger;
  */
 public class Server extends Actor {
     private static Logger log = Logger.getLogger(Server.class.getName());
+    public static int CHAPTERS_COUNT = 1000;
     private static ConcurrentMap<SocketChannel, ClientState> activeClients = new ConcurrentHashMap<>();
+    private Index index = new Index();
 
     public Server(InetSocketAddress isa) throws IOException {
         super(isa);
@@ -33,9 +33,23 @@ public class Server extends Actor {
             activeClients.putIfAbsent(socketChannel, new ClientState());
             final ClientState clientState = activeClients.get(socketChannel);
             clientState.isa = msg.isa;
-            sendMessage(socketChannel, new SettingsResponse(ServerConfig.CHAPTERS_COUNT));
+            index.peerIsActivated(msg.isa);
+            sendMessage(socketChannel, new SettingsResponse(CHAPTERS_COUNT));
         } catch (IOException e) {
             log.log(Level.SEVERE, "Error on Settings response", e);
+        }
+    }
+
+    void onAddBook(AddBook msg, SocketChannel socketChannel) {
+        log.log(Level.INFO, String.format("Add book: %s %d", msg.bookName, msg.size));
+        index.addOwner(msg.bookName, msg.size, activeClients.get(socketChannel).isa);
+    }
+
+    void onStatisticRequest(StatisticRequest msg, SocketChannel socketChannel) {
+        try {
+            sendMessage(socketChannel, index.generateStatistic());
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "Error on Statistic response", e);
         }
     }
 
@@ -48,12 +62,32 @@ public class Server extends Actor {
                     log.log(Level.INFO, "Got SETTINGS_REQUEST");
                     onSettingsRequest((SettingsRequest) msg, socketChannel);
                     break;
+                case ADD_BOOK:
+                    log.log(Level.INFO, "Got ADD_BOOK");
+                    onAddBook((AddBook) msg, socketChannel);
+                    break;
+                case STATISTIC_REQUEST:
+                    log.log(Level.INFO, "Got STATISTIC_REQUEST");
+                    onStatisticRequest((StatisticRequest) msg, socketChannel);
+                    break;
+                case CHAPTER_OWNER_REQUEST:
+                    log.log(Level.INFO, "Got CHAPTER_OWNER_REQUEST");
+                    onChapterOwnerRequest((ChapterOwnerRequest) msg, socketChannel);
+                    break;
                 default:
-                    log.log(Level.INFO, "Wrong message type");
+                    log.log(Level.INFO, "Wrong message type: " + msg.getType().toString());
             }
         } catch (Exception e) {
             log.log(Level.SEVERE, "Error with message processing:", e);
             shutDown();
+        }
+    }
+
+    public void onChapterOwnerRequest(ChapterOwnerRequest msg, SocketChannel socketChannel) {
+        try {
+            sendMessage(socketChannel, index.generateChapterOwnerResponse(msg));
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "Error on generating chapter owner response", e);
         }
     }
 
@@ -65,6 +99,21 @@ public class Server extends Actor {
     @Override
     public void onDisconnect(SocketChannel socketChannel) {
         log.log(Level.INFO, "Disconnected client");
-        activeClients.remove(socketChannel);
+        try {
+            index.peerIsDeactivated(activeClients.get(socketChannel).isa);
+            activeClients.remove(socketChannel);
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "Error on disconnecting", e);
+        }
+    }
+
+    @Override
+    public void onShutdown() {
+
+    }
+
+    @Override
+    public void onConnectingError(SocketChannel socketChannel) {
+
     }
 }

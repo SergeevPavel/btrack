@@ -49,6 +49,7 @@ public abstract class Actor implements Runnable {
     }
 
     public Actor(InetSocketAddress isa) throws IOException {
+        log.setLevel(Level.SEVERE);
         selector = SelectorProvider.provider().openSelector();
         serverChannel = ServerSocketChannel.open();
         serverChannel.configureBlocking(false);
@@ -89,6 +90,10 @@ public abstract class Actor implements Runnable {
      */
     public abstract void onDisconnect(SocketChannel socketChannel);
 
+    public abstract void onShutdown();
+
+    public abstract void onConnectingError(SocketChannel socketChannel);
+
     /**
      * Initiate new connection.
      * Can be called in non selector thread.
@@ -96,7 +101,7 @@ public abstract class Actor implements Runnable {
      * @param targetISA
      * @throws IOException
      */
-    public void initiateConnection(InetSocketAddress targetISA) throws IOException {
+    public SocketChannel initiateConnection(InetSocketAddress targetISA) throws IOException {
         log.log(Level.INFO, String.format("Try to initiate connection to %s", targetISA));
         SocketChannel socketChannel = SocketChannel.open();
         socketChannel.configureBlocking(false);
@@ -107,6 +112,7 @@ public abstract class Actor implements Runnable {
             pendingChanges.add(new ChangeRequest(socketChannel, ChangeRequest.Type.REGISTER, SelectionKey.OP_CONNECT));
         }
         selector.wakeup();
+        return socketChannel;
     }
 
     /**
@@ -141,6 +147,7 @@ public abstract class Actor implements Runnable {
         isRunning = false;
         selector.wakeup();
         executor.shutdown();
+        onShutdown();
     }
 
     private void accept(SelectionKey key) throws IOException {
@@ -163,8 +170,8 @@ public abstract class Actor implements Runnable {
             } catch (IOException ne) {
                 log.log(Level.SEVERE, "Error when closing chanel", ne);
             }
-            executor.submit(() -> onDisconnect((SocketChannel)key.channel()));
-            log.log(Level.SEVERE, "Data not red");
+            executor.submit(() -> onDisconnect((SocketChannel) key.channel()));
+            log.log(Level.INFO, "Data not reading");
             return;
         }
 
@@ -195,6 +202,7 @@ public abstract class Actor implements Runnable {
         try {
             if (!socketChannel.finishConnect()) {
                 log.log(Level.INFO, "connecting failed");
+                executor.submit(() -> onConnectingError((SocketChannel) key.channel()));
             }
         } catch (IOException e) {
             log.log(Level.SEVERE, "Error when connecting finishing", e);
@@ -213,9 +221,12 @@ public abstract class Actor implements Runnable {
             log.log(Level.INFO, "End of stream reached");
             return 0;
         }
-        if (numRead != 4) { // TODO
-            log.log(Level.SEVERE, "Message size not found");
-            throw new RuntimeException("Wrong message exception");
+//        if (numRead != 4) { // TODO
+//            log.log(Level.SEVERE, "Message size not found");
+//            throw new RuntimeException("Wrong message exception");
+//        }
+        while (messageSizeBuffer.hasRemaining()) {
+            socketChannel.read(messageSizeBuffer);
         }
         log.log(Level.INFO, String.format("Message size %d bytes red", numRead));
         messageSizeBuffer.flip();
@@ -241,11 +252,11 @@ public abstract class Actor implements Runnable {
         pendingData.putIfAbsent(socket, new ConcurrentLinkedQueue<>());
         ConcurrentLinkedQueue<ByteBuffer> queue = pendingData.get(socket);
         byte[] buffer = Serializer.serialize(msg);
-        ByteBuffer sizeBuf = ByteBuffer.allocate(4);
-        sizeBuf.putInt(buffer.length);
-        sizeBuf.flip();
-        queue.offer(sizeBuf);
-        queue.offer(ByteBuffer.wrap(buffer));
+        ByteBuffer byteBuffer = ByteBuffer.allocate(4 + buffer.length);
+        byteBuffer.putInt(buffer.length);
+        byteBuffer.put(buffer);
+        byteBuffer.flip();
+        queue.offer(byteBuffer);
         log.log(Level.INFO, String.format("Message added to queue: %d", buffer.length));
     }
 
@@ -265,7 +276,7 @@ public abstract class Actor implements Runnable {
                                 break;
                             case CLOSE:
                                 change.socket.close();
-                                change.socket.keyFor(selector).channel();
+                                change.socket.keyFor(selector).cancel();
                                 log.log(Level.INFO, "Close priority");
                                 break;
                             case CHANGEOPS:

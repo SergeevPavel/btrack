@@ -1,28 +1,22 @@
 package ui;
 
+import ru.spbau.sergeev.btrack.client.Client;
+
 import javax.swing.table.AbstractTableModel;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * @author pavel
  */
 public class FilesTableModel extends AbstractTableModel {
-    private List<List<String>> data;
     private int columnCount = 3;
     private String[] columnNames = new String[] {"Filename", "Downloaded", "Available"};
 
     public FilesTableModel() {
-        data = new ArrayList<>();
-        data.add(Arrays.asList("book1.txt", "10%", "20%"));
-        data.add(Arrays.asList("book2.txt", "10%", "20%"));
-        data.add(Arrays.asList("book3.txt", "10%", "20%"));
     }
 
     @Override
     public int getRowCount() {
-        return data.size();
+        return Client.client.bookStorage.size();
     }
 
     @Override
@@ -32,7 +26,17 @@ public class FilesTableModel extends AbstractTableModel {
 
     @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
-        return data.get(rowIndex).get(columnIndex);
+        switch (columnIndex) {
+            case 0:
+                return Client.client.bookStorage.get(rowIndex).getBookName();
+            case 1:
+                return String.format("%.0f%%", Client.client.bookStorage.get(rowIndex).getCompletedPercent());
+            case 2:
+                return String.format("%.0f%%", Client.client.bookStorage.get(rowIndex).getAvailablePercent());
+            default:
+                assert false;
+        }
+        return null;
     }
 
     @Override
